@@ -1824,7 +1824,7 @@
                 <div class="pair-info">
                     <img src="https://flagcdn.com/32x24/eu.png" class="pair-icon" alt="EUR">
                     <div class="pair-details">
-                        <h2>EUR/USD · Euro / US Dollar</h2>
+                        <h2>EUR/USD · FIXED US Dollar</h2>
                         <span id="currentDate">Mon 01 Dec '25 · 09:30</span>
                     </div>
                 </div>
@@ -3268,13 +3268,51 @@
             document.getElementById('tradeButtonsTop').style.display = 'none';
         }
 
-        const savedUser = localStorage.getItem('fxUser');
-        if (savedUser) {
-            currentUser = JSON.parse(savedUser);
-            updateUIForLoggedInUser();
-        }
 
-        window.toggleUserMenu = function() {
+
+
+
+
+
+
+
+
+const savedUser = localStorage.getItem('fxUser');
+if (savedUser) {
+    currentUser = JSON.parse(savedUser);
+    updateUIForLoggedInUser();
+    
+    // Refresh balance from Firebase (in case admin credited while offline)
+    refreshUserBalance();
+}
+
+async function refreshUserBalance() {
+    if (!currentUser || !currentUser.id) return;
+    try {
+        const userDoc = await getDoc(doc(db, 'users', currentUser.id));
+        if (userDoc.exists()) {
+            const freshData = userDoc.data();
+            currentUser.balance = freshData.balance || 0;
+            currentUser.name = freshData.name;
+            currentUser.phone = freshData.phone;
+            currentUser.avatar = freshData.avatar;
+            localStorage.setItem('fxUser', JSON.stringify(currentUser));
+            document.getElementById('balanceAmount').textContent = 'R' + currentUser.balance.toFixed(2);
+        }
+    } catch (error) { console.error('Refresh balance error:', error); }
+}
+
+
+
+
+
+
+
+
+
+
+
+    window.toggleUserMenu = function() {
             if (confirm('Log out?')) {
                 currentUser = null;
                 localStorage.removeItem('fxUser');
@@ -3788,17 +3826,34 @@
             } catch (error) { console.error('Load traders error:', error); }
         }
 
-        window.creditUser = async function(userId) {
-            const amount = prompt('Enter amount to credit (ZAR):');
-            if (!amount || isNaN(amount)) return;
-            try {
-                const userRef = doc(db, 'users', userId);
-                const userDoc = await getDoc(userRef);
-                await updateDoc(userRef, { balance: (userDoc.data().balance || 0) + parseFloat(amount) });
-                alert('User credited!');
-                loadTraders();
-            } catch (error) { console.error('Credit error:', error); }
-        };
+        
+window.creditUser = async function(userId) {
+    const amount = prompt('Enter amount to credit (ZAR):');
+    if (!amount || isNaN(amount)) return;
+    try {
+        const userRef = doc(db, 'users', userId);
+        const userDoc = await getDoc(userRef);
+        const newBalance = (userDoc.data().balance || 0) + parseFloat(amount);
+        await updateDoc(userRef, { balance: newBalance });
+        
+        // If this is the current logged-in user, update their balance immediately
+        if (currentUser && currentUser.id === userId) {
+            currentUser.balance = newBalance;
+            localStorage.setItem('fxUser', JSON.stringify(currentUser));
+            document.getElementById('balanceAmount').textContent = 'R' + newBalance.toFixed(2);
+        }
+        
+        alert('User credited R' + parseFloat(amount).toFixed(2) + '! New balance: R' + newBalance.toFixed(2));
+        loadTraders();
+    } catch (error) { console.error('Credit error:', error); alert('Credit failed!'); }
+};
+
+
+
+
+
+
+
 
         window.searchTraders = function() {
             const searchQuery = document.getElementById('traderSearch').value.toLowerCase();
@@ -3832,16 +3887,35 @@
             } catch (error) { console.error('Load deposits error:', error); }
         }
 
-        window.approveDeposit = async function(depositId, userId, amount) {
-            try {
-                const userRef = doc(db, 'users', userId);
-                const userDoc = await getDoc(userRef);
-                await updateDoc(userRef, { balance: (userDoc.data().balance || 0) + amount });
-                await updateDoc(doc(db, 'deposits', depositId), { status: 'completed' });
-                alert('Deposit approved!');
-                loadDeposits();
-            } catch (error) { console.error('Approve error:', error); }
-        };
+
+
+
+
+   window.approveDeposit = async function(depositId, userId, amount) {
+    try {
+        const userRef = doc(db, 'users', userId);
+        const userDoc = await getDoc(userRef);
+        const newBalance = (userDoc.data().balance || 0) + amount;
+        await updateDoc(userRef, { balance: newBalance });
+        await updateDoc(doc(db, 'deposits', depositId), { status: 'completed' });
+        
+        // If this is the current logged-in user, update their balance immediately
+        if (currentUser && currentUser.id === userId) {
+            currentUser.balance = newBalance;
+            localStorage.setItem('fxUser', JSON.stringify(currentUser));
+            document.getElementById('balanceAmount').textContent = 'R' + newBalance.toFixed(2);
+        }
+        
+        alert('Deposit approved! User new balance: R' + newBalance.toFixed(2));
+        loadDeposits();
+    } catch (error) { console.error('Approve error:', error); alert('Approve failed!'); }
+};
+
+
+
+
+
+
 
         window.deleteDeposit = async function(depositId) {
             if (!confirm('Delete this deposit?')) return;
@@ -3922,4 +3996,3 @@
     </script>
 </body>
 </html>
-
